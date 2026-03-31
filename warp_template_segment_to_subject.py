@@ -257,9 +257,7 @@ def main():
     # --------------------------
     # 3) warp into subject space
     # --------------------------
-    subj_segment = out_dir / (
-        f"subj_{args.subject_id}_{args.Va}_{args.Vb}_ecc{ecc_tag}_pol{pol_tag}_hemi{hemi_tag}.tck"
-    )
+    subj_segment = out_dir / "track.tck"
 
     warp_tck_template_to_subject(
     tck_in_tpl=tpl_segment,
