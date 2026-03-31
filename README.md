@@ -1,4 +1,4 @@
-# Map Retinotopic Connections (app-map-retinotopic-connections)
+# Map Retinotopic Connections (app-map-retinotopic-tracts)
 
 `app-map-retinotopic-connections` generates **volumetric maps of retinotopically-organised
 structural connections** from a white-matter tractogram.
