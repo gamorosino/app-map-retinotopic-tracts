@@ -94,9 +94,12 @@ def warp_tck_template_to_subject(
            --reference subj_ref -f --reverse_operation --in_deformation warp --keep_invalid
     """
     tck_out_subj.parent.mkdir(parents=True, exist_ok=True)
-
-    affine_conv = affine.with_name(affine.name.replace(".mat", "_converted.mat"))
-
+    
+    converted_dir = SCRIPT_DIR / "data" / "converted"
+    converted_dir.mkdir(parents=True, exist_ok=True)
+    
+    affine_conv = converted_dir / f"{affine.stem}_converted.mat"
+    
     # Convert affine
     subprocess.run(
         ["ConvertTransformFile", "3", str(affine), str(affine_conv), "--convertToAffineType"],
