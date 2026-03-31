@@ -6,7 +6,7 @@ import json
 import subprocess
 from pathlib import Path
 from typing import Optional
-
+import shutil
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
@@ -14,6 +14,35 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 # ---------------------------------------------------------------------
 # config helpers
 # ---------------------------------------------------------------------
+
+def _stage_benson_from_config(cfg: dict, repo_root: Path) -> Path:
+    """
+    Stage eccentricity/polarAngle/varea from config.json into the Benson-style
+    directory expected by extract_template_tract_segment.py.
+    Returns the staged benson_dir.
+    """
+    ecc = _required_path(cfg, "eccentricity")
+    pol = _required_path(cfg, "polarAngle")
+    var = _required_path(cfg, "varea")
+
+    benson_dir = repo_root / "data" / "templates" / "freesurfer" / "mri" / "benson14"
+    benson_dir.mkdir(parents=True, exist_ok=True)
+
+    targets = {
+        ecc: benson_dir / "benson14_eccen.nii.gz",
+        pol: benson_dir / "benson14_angle.nii.gz",
+        var: benson_dir / "benson14_varea.nii.gz",
+    }
+
+    for src, dst in targets.items():
+        if dst.exists():
+            continue
+        try:
+            dst.symlink_to(src.resolve())
+        except Exception:
+            shutil.copy2(src, dst)
+
+    return benson_dir
 
 def _get(cfg: Optional[dict], key: str, default=None):
     if cfg is None:
@@ -150,7 +179,7 @@ def main() -> None:
     hemi_tag = hemisphere
 
     template_segment = visual_tracts_dir / f"{Va}_{Vb}_ecc{ecc_tag}_pol{pol_tag}_{hemi_tag}.tck"
-
+    benson_dir = _stage_benson_from_config(cfg, repo_root)
     # ---------------------------------------------------------------
     # 1) extract template segment
     # ---------------------------------------------------------------
