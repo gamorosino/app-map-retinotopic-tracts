@@ -85,6 +85,7 @@ def warp_tck_template_to_subject(
     subj_ref: Path,
     affine: Path,
     warp: Path,
+    work_dir: Path,
 ) -> None:
     """
     Implements your exact warp toolchain:
@@ -95,7 +96,7 @@ def warp_tck_template_to_subject(
     """
     tck_out_subj.parent.mkdir(parents=True, exist_ok=True)
     
-    converted_dir = SCRIPT_DIR / "data" / "converted"
+    converted_dir = work_dir / "converted"
     converted_dir.mkdir(parents=True, exist_ok=True)
     
     affine_conv = converted_dir / f"{affine.stem}_converted.mat"
@@ -178,6 +179,9 @@ def main():
     out_dir = args.out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    work_dir = out_dir / "workdir"
+    work_dir.mkdir(parents=True, exist_ok=True)
+
     # Infer repo_root like you suggested: dirname(dirname(script))
     repo_root = args.repo_root if args.repo_root else Path(__file__).resolve().parents[2]
 
@@ -197,7 +201,7 @@ def main():
         affine = args.affine
         warp = args.warp
     else:
-        reg_dir = out_dir / "Reg2MNI"
+        reg_dir = work_dir  / "transformations"
         affine, warp = run_registration_brain(
             subject_t1=args.subject_t1,
             template_t1=args.template_t1,
@@ -213,7 +217,12 @@ def main():
     pol_tag = "all" if args.polar_bin.lower() == "all" else args.polar_bin.replace("-", "_")
     hemi_tag = args.hemisphere
 
-    tpl_segment = out_dir / f"tpl_{args.Va}_{args.Vb}_ecc{ecc_tag}_pol{pol_tag}_hemi{hemi_tag}.tck"
+    template_seg_dir = work_dir / "template_segments"
+    template_seg_dir.mkdir(parents=True, exist_ok=True)
+    
+    tpl_segment = template_seg_dir / (
+        f"tpl_{args.Va}_{args.Vb}_ecc{ecc_tag}_pol{pol_tag}_hemi{hemi_tag}.tck"
+    )
 
     cmd = [
         "python",
@@ -253,13 +262,13 @@ def main():
     )
 
     warp_tck_template_to_subject(
-        tck_in_tpl=tpl_segment,
-        tck_out_subj=subj_segment,
-        subj_ref=args.subject_t1,
-        affine=affine,
-        warp=warp,
+    tck_in_tpl=tpl_segment,
+    tck_out_subj=subj_segment,
+    subj_ref=args.subject_t1,
+    affine=affine,
+    warp=warp,
+    work_dir=work_dir,
     )
-
     n_subj = count_streamlines(subj_segment)
     print(f" Subject-space segmented tract: {subj_segment}")
     print(f" Subject segment streamline count: {n_subj}")
