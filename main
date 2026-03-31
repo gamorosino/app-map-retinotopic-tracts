@@ -1,0 +1,46 @@
+#!/bin/bash
+#PBS -l nodes=1:ppn=1,vmem=16g,walltime=4:00:00
+#PBS -N app-map-retinotopic-connections
+#PBS -V
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# ============================================================================
+# Read required parameters from config.json
+# ============================================================================
+
+track=$(jq -r '.tractogram // empty' config.json)
+
+if [ -z "${track}" ]; then
+    echo "[ERROR] 'tractogram' field is required in config.json" >&2
+    exit 1
+fi
+
+if [ ! -f "${track}" ]; then
+    echo "[ERROR] Tractogram not found: ${track}" >&2
+    exit 1
+fi
+
+echo "[INFO] Tractogram     : ${track}"
+echo "[INFO] Config file    : config.json"
+
+# ============================================================================
+# Prepare output directory (brainlife-style)
+# ============================================================================
+
+mkdir -p output
+
+# ============================================================================
+# Run main pipeline inside Singularity container
+# ============================================================================
+
+echo "[INFO] Running main.py inside Singularity container …"
+
+singularity exec -e docker://gamorosino/tract_align:latest \
+    micromamba run -n tract_align \
+    python3 "${SCRIPT_DIR}/main.py" \
+    --config config.json
+
+echo "[INFO] Done. Outputs in ./output"
