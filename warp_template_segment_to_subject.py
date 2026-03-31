@@ -8,9 +8,6 @@ from typing import Optional
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
-# ANTs container used across all registration / transform steps
-ANTS_CONTAINER = "docker://brainlife/ants:2.2.0-1bc"
-
 
 def remove_ext(p: Path) -> str:
     """
@@ -49,273 +46,222 @@ def run_registration_brain(
     template_t1: Path,
     output_reg_dir: Path,
     max_parallel: int,
-    reglib_path: Optional[Path] = None,
+    reglib_path: Path,
 ) -> tuple[Path, Path]:
     """
-    Register the subject T1 to the template T1 using ANTs.
-
-    If reglib_path is provided and REGlib.sh is available, it delegates to:
+    Calls:
       source REGlib.sh
       registration_brain "$t1" "$template" --outputdir "$out" -s 2 -c "$max_parallel"
 
-    Otherwise it runs ANTs directly.
-
-    Returns:
-      (affine_mat, warp_field)   — paths to the affine .mat and nonlinear warp .nii.gz
+    Then returns:
+      AFFINE = <out>/<basename(t1)>_SyN0GenericAffine.mat
+      WARP   = <out>/<basename(t1)>_SyN1Warp.nii.gz
     """
     output_reg_dir.mkdir(parents=True, exist_ok=True)
 
-    stem = remove_ext(subject_t1)
-
-    # --- Try REGlib.sh if provided ---
-    # REGlib.sh's registration_brain names outputs as {stem}_SyN{suffix}
-    # (diffeopost = "SyN" from the default diffeo=SyN[0.25] with -s 2)
-    if reglib_path is not None and reglib_path.exists():
-        reg_prefix = str(output_reg_dir / (stem + "_SyN"))
-        affine = Path(reg_prefix + "0GenericAffine.mat")
-        warp = Path(reg_prefix + "1Warp.nii.gz")
-
-        if affine.exists() and warp.exists():
-            print(f"[INFO] Registration outputs already exist — skipping: {affine}")
-            return affine, warp
-
-        print(f"[INFO] Running registration via REGlib.sh: {reglib_path}")
-        cmd = (
-            f'source "{reglib_path}" && '
-            f'registration_brain "{subject_t1}" "{template_t1}" '
-            f'--outputdir "{output_reg_dir}" -s 2 -c {max_parallel}'
-        )
-        run_bash(cmd)
-        if affine.exists() and warp.exists():
-            return affine, warp
-        raise FileNotFoundError(
-            f"REGlib.sh registration did not produce expected output: {affine}"
-        )
-
-    # --- Direct ANTs registration ---
-    prefix = str(output_reg_dir / (stem + "_to_template_"))
-
-    affine = Path(prefix + "0GenericAffine.mat")
-    warp = Path(prefix + "1Warp.nii.gz")
-    warped = Path(prefix + "Warped.nii.gz")
-    inv_warped = Path(prefix + "InverseWarped.nii.gz")
-
-    # --- Skip registration if outputs already exist ---
-    if affine.exists() and warp.exists():
-        print(f"[INFO] Registration outputs already exist — skipping: {affine}")
-        return affine, warp
-
-    print("[INFO] Running ANTs registration (antsRegistration)...")
-
-    convergence_threshold = "1.e-8"
-    its = "10000x10000x0"
-    percentage = "0.3"
-    syn = "100x100x0,-0.01,5"
-    sigma = "1x0.5x0vox"
-    shrink = "4x2x1"
-    sigma_lin = "4x2x1vox"
-    shrink_lin = "3x2x1"
-    shrink0 = "6x4x2"
-    diffeo = "SyN[0.25]"
-
-    f = str(template_t1)
-    m = str(subject_t1)
-
-    stage0 = (
-        f"-m mattes[ {f},{m},1,32,regular,{percentage} ] "
-        f"-t translation[0.1] -c [{its},{convergence_threshold},20] "
-        f"-u 1 -s {sigma_lin} -f {shrink0} -l 1"
+    # Source REGlib + run registration_brain
+    cmd = (
+        f"source '{reglib_path}' && "
+        f"registration_brain '{subject_t1}' '{template_t1}' "
+        f"--outputdir '{output_reg_dir}' -s 2 -c {int(max_parallel)}"
     )
-    stage1 = (
-        f"-m mattes[ {f},{m},1,32,regular,{percentage} ] "
-        f"-t rigid[0.1] -c [{its},{convergence_threshold},20] "
-        f"-u 1 -s {sigma_lin} -f {shrink_lin} -l 1"
-    )
-    stage2 = (
-        f"-m mattes[ {f},{m},1,32,regular,{percentage} ] "
-        f"-t affine[0.1] -c [{its},{convergence_threshold},20] "
-        f"-u 1 -s {sigma_lin} -f {shrink_lin} -l 1"
-    )
-    stage3 = (
-        f"-m mattes[ {f},{m},0.5,32 ] -m cc[ {f},{m},0.5,4 ] "
-        f"-c [ {syn} ] -t {diffeo} -s {sigma} -f {shrink} -l 1 -u 1 -z 1"
-    )
+    run_bash(cmd)
 
-    ants_cmd = (
-        f"singularity exec -e {ANTS_CONTAINER} "
-        f"antsRegistration -d 3 "
-        f"-r [{f},{m},1] "
-        f"{stage0} "
-        f"{stage1} "
-        f"{stage2} "
-        f"{stage3} "
-        f"-o [{prefix},{warped},{inv_warped}] "
-        f"--verbose 1 "
-        f"--winsorize-image-intensities [0.005,0.995] "
-        f"-n {max_parallel}"
-    )
-
-    run_bash(ants_cmd)
+    base = remove_ext(subject_t1)
+    affine = output_reg_dir / f"{base}_SyN0GenericAffine.mat"
+    warp = output_reg_dir / f"{base}_SyN1Warp.nii.gz"
 
     if not affine.exists():
-        raise FileNotFoundError(
-            f"ANTs registration did not produce expected affine: {affine}"
-        )
+        raise FileNotFoundError(f"Missing affine after registration: {affine}")
+    if not warp.exists():
+        raise FileNotFoundError(f"Missing warp after registration: {warp}")
 
     return affine, warp
 
 
-def apply_transform_to_map(
-    input_map: Path,
-    reference: Path,
+def warp_tck_template_to_subject(
+    tck_in_tpl: Path,
+    tck_out_subj: Path,
+    subj_ref: Path,
     affine: Path,
-    warp: Optional[Path],
-    output_path: Path,
-    interpolation: str = "Linear",
-    invert_affine: bool = False,
-) -> Path:
+    warp: Path,
+) -> None:
     """
-    Apply ANTs transforms to a NIfTI map (e.g., pRF eccentricity map).
+    Implements your exact warp toolchain:
 
-    To warp a map from template → subject space use the *inverse* transforms:
-      - invert_affine=True  (inverse of affine)
-      - inverse warp field  (passed as warp)
+      ConvertTransformFile 3 AFFINE AFFINE_converted.mat --convertToAffineType
+      scil_apply_transform_to_tractogram.py tck_in subj_ref AFFINE_converted tck_out
+           --reference subj_ref -f --reverse_operation --in_deformation warp --keep_invalid
     """
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    if output_path.exists():
-        print(f"[INFO] Output already exists, skipping: {output_path}")
-        return output_path
+    tck_out_subj.parent.mkdir(parents=True, exist_ok=True)
 
-    affine_flag = f"1" if invert_affine else f"0"
-    transform_args = f"-t [{affine},{affine_flag}]"
+    affine_conv = affine.with_name(affine.name.replace(".mat", "_converted.mat"))
 
-    if warp is not None and warp.exists():
-        transform_args = f"-t {warp} " + transform_args
-
-    cmd = (
-        f"singularity exec -e {ANTS_CONTAINER} "
-        f"antsApplyTransforms -d 3 "
-        f"-i {input_map} "
-        f"-r {reference} "
-        f"{transform_args} "
-        f"-o {output_path} "
-        f"-n {interpolation}"
+    # Convert affine
+    subprocess.run(
+        ["ConvertTransformFile", "3", str(affine), str(affine_conv), "--convertToAffineType"],
+        check=True
     )
 
-    print(f"[INFO] Applying transform: {input_map.name} -> {output_path.name}")
-    run_bash(cmd)
+    # Apply transform to tractogram (template -> subject space)
+    # NOTE: This matches your snippet exactly (uses --inverse and --in_deformation with the inverse warp).
+    subprocess.run(
+        [
+            "scil_apply_transform_to_tractogram.py",
+            str(tck_in_tpl),
+            str(subj_ref),
+            str(affine_conv),
+            str(tck_out_subj),
+            "--reference", str(subj_ref),
+            "-f",
+            "--reverse_operation",
+            "--in_deformation", str(warp),
+            "--keep_invalid",
+        ],
+        check=True
+    )
 
-    if not output_path.exists():
-        raise FileNotFoundError(
-            f"antsApplyTransforms did not produce expected output: {output_path}"
+
+def main():
+    ap = argparse.ArgumentParser(
+        description="Segment template occipital tract by (Va,Vb,ecc,polar,hemi) then warp to subject space."
+    )
+
+    # --- subject/template
+    ap.add_argument("--subject-id", required=True,
+                help="Subject identifier used for naming outputs (e.g. 110613)")
+    ap.add_argument("--subject-t1", type=Path, required=True)
+
+    ap.add_argument("--template-t1", type=Path, required=True)
+    ap.add_argument("--template-tract", type=Path, required=True,
+                    help="Occipital template tractogram in template space (.tck)")
+
+    # --- selection
+    ap.add_argument("--Va", required=True)
+    ap.add_argument("--Vb", required=True)
+    ap.add_argument("--ecc-bin", default="all", help="e.g. 8-16 or 8_16 or 'all'")
+    ap.add_argument("--polar-bin", default="all", help="e.g. 75-105 or 75_105 or 'all'")
+
+    # --- output
+    ap.add_argument("--out-dir", type=Path, required=True)
+
+    # --- reuse transforms
+    ap.add_argument("--affine", type=Path, default=None,
+                    help="If provided with --warp, skips registration.")
+    ap.add_argument("--warp", type=Path, default=None,
+                    help="Warp (SyN1Warp.nii.gz).")
+    ap.add_argument("--skip-registration", action="store_true",
+                    help="Requires --affine and --warp.")
+
+    # --- registration lib + parallelism
+    ap.add_argument("--max-parallel", type=int, default=8,
+                    help="Passed to registration_brain -c (default: 8)")
+    ap.add_argument("--reglib", type=Path, default=None,
+                    help="Path to REGlib.sh (default: inferred from repo-root)")
+
+    # --- options mirrored from extract_template_tract_segment.py
+    ap.add_argument("--ends-only", action="store_true")
+    ap.add_argument("--roi-order", action="store_true")
+    ap.add_argument("--hemisphere", choices=["L", "R", "all"], default="all")
+    ap.add_argument("--repo-root", type=Path, default=None,
+                    help="VISCONTI_analysis repo root (default: inferred).")
+    ap.add_argument("--benson-dir", type=Path, default=None,
+                    help="Override benson14 dir (default: inferred in callee).")
+    ap.add_argument("--work-dir", type=Path, default=None,
+                    help="Where to store generated masks for template segmentation.")
+
+    args = ap.parse_args()
+
+    out_dir = args.out_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Infer repo_root like you suggested: dirname(dirname(script))
+    repo_root = args.repo_root if args.repo_root else Path(__file__).resolve().parents[2]
+
+    # Infer REGlib.sh location if not provided
+    reglib_path = args.reglib if args.reglib else (
+        repo_root / "code/tractogram_alignment_repo/code/wm_registration/libraries/REGlib.sh"
+    )
+    if not reglib_path.exists():
+        raise FileNotFoundError(f"REGlib.sh not found: {reglib_path}")
+
+    # --------------------------
+    # 1) registration transforms
+    # --------------------------
+    if args.skip_registration:
+        if args.affine is None or args.warp is None:
+            raise ValueError("--skip-registration requires --affine and --inv-warp")
+        affine = args.affine
+        warp = args.warp
+    else:
+        reg_dir = out_dir / "Reg2MNI"
+        affine, warp = run_registration_brain(
+            subject_t1=args.subject_t1,
+            template_t1=args.template_t1,
+            output_reg_dir=reg_dir,
+            max_parallel=args.max_parallel,
+            reglib_path=reglib_path,
         )
-    return output_path
 
+    # --------------------------
+    # 2) segment template tract
+    # --------------------------
+    ecc_tag = "all" if args.ecc_bin.lower() == "all" else args.ecc_bin.replace("-", "_")
+    pol_tag = "all" if args.polar_bin.lower() == "all" else args.polar_bin.replace("-", "_")
+    hemi_tag = args.hemisphere
 
-def warp_prf_maps_to_subject(
-    template_eccentricity: Path,
-    template_polar_angle: Path,
-    template_varea: Path,
-    subject_t1: Path,
-    affine: Path,
-    inv_warp: Optional[Path],
-    output_dir: Path,
-) -> tuple[Path, Path, Path]:
-    """
-    Warp pRF maps from template space to subject space using the *inverse* of
-    the subject→template registration.
+    tpl_segment = out_dir / f"tpl_{args.Va}_{args.Vb}_ecc{ecc_tag}_pol{pol_tag}_hemi{hemi_tag}.tck"
 
-    Returns:
-      (eccentricity_subj, polar_angle_subj, varea_subj)
-    """
-    output_dir.mkdir(parents=True, exist_ok=True)
+    cmd = [
+        "python",
+        str(SCRIPT_DIR / "extract_template_tract_segment.py"),
+        "--template", str(args.template_tract),
+        "--Va", args.Va,
+        "--Vb", args.Vb,
+        "--ecc-bin", args.ecc_bin,
+        "--polar-bin", args.polar_bin,
+        "--out-tck", str(tpl_segment),
+        "--hemisphere", args.hemisphere,
+    ]
+    if args.ends_only:
+        cmd.append("--ends-only")
+    if args.roi_order:
+        cmd.append("--roi-order")
+    if args.benson_dir:
+        cmd += ["--benson-dir", str(args.benson_dir)]
+    if args.work_dir:
+        cmd += ["--work-dir", str(args.work_dir)]
+    # pass repo-root explicitly so both scripts resolve the same tree
+    cmd += ["--repo-root", str(repo_root)]
 
-    ecc_out = output_dir / "eccentricity.nii.gz"
-    pol_out = output_dir / "polarAngle.nii.gz"
-    varea_out = output_dir / "varea.nii.gz"
+    subprocess.run(cmd, check=True)
 
-    apply_transform_to_map(
-        template_eccentricity, subject_t1, affine, inv_warp,
-        ecc_out, interpolation="Linear", invert_affine=True,
-    )
-    apply_transform_to_map(
-        template_polar_angle, subject_t1, affine, inv_warp,
-        pol_out, interpolation="Linear", invert_affine=True,
-    )
-    # varea is a label map — use nearest-neighbor interpolation
-    apply_transform_to_map(
-        template_varea, subject_t1, affine, inv_warp,
-        varea_out, interpolation="NearestNeighbor", invert_affine=True,
-    )
+    n_tpl = count_streamlines(tpl_segment)
+    print(f" Template segmented tract: {tpl_segment}")
+    print(f" Template segment streamline count: {n_tpl}")
+    if n_tpl == 0:
+        print(" WARNING: template segment has 0 streamlines (ecc/polar/hemi too restrictive?)")
 
-    return ecc_out, pol_out, varea_out
-
-
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
-
-def _build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(
-        description=(
-            "Warp template pRF/retinotopic maps to subject space via ANTs registration."
-        )
-    )
-    p.add_argument("--subject-t1", required=True, type=Path, help="Subject T1 image")
-    p.add_argument("--template-t1", required=True, type=Path, help="Template T1 image")
-    p.add_argument("--template-ecc", required=True, type=Path,
-                   help="Template eccentricity map (nii.gz)")
-    p.add_argument("--template-polar", required=True, type=Path,
-                   help="Template polar angle map (nii.gz)")
-    p.add_argument("--template-varea", required=True, type=Path,
-                   help="Template varea (visual area label) map (nii.gz)")
-    p.add_argument("--outdir", required=True, type=Path,
-                   help="Output directory for warped maps")
-    p.add_argument("--reg-dir", default=None, type=Path,
-                   help="Directory to store registration files (default: outdir/reg)")
-    p.add_argument("--nthreads", default=1, type=int,
-                   help="Number of parallel threads for ANTs (default: 1)")
-    p.add_argument("--reglib", default=None, type=Path,
-                   help="Optional path to REGlib.sh (for registration_brain function)")
-    return p
-
-
-def main() -> None:
-    args = _build_parser().parse_args()
-
-    args.outdir.mkdir(parents=True, exist_ok=True)
-    reg_dir = args.reg_dir or (args.outdir / "reg")
-
-    print("[INFO] Running brain registration (subject → template)...")
-    affine, warp = run_registration_brain(
-        subject_t1=args.subject_t1,
-        template_t1=args.template_t1,
-        output_reg_dir=reg_dir,
-        max_parallel=args.nthreads,
-        reglib_path=args.reglib,
+    # --------------------------
+    # 3) warp into subject space
+    # --------------------------
+    subj_segment = out_dir / (
+        f"subj_{args.subject_id}_{args.Va}_{args.Vb}_ecc{ecc_tag}_pol{pol_tag}_hemi{hemi_tag}.tck"
     )
 
-    # The inverse warp field (template → subject direction).
-    # Derive its path from the returned affine so it works for both the
-    # REGlib.sh naming ({stem}_SyN) and the direct-ANTs naming ({stem}_to_template_).
-    inv_warp_candidate = Path(str(affine).replace("0GenericAffine.mat", "1InverseWarp.nii.gz"))
-    inv_warp = inv_warp_candidate if inv_warp_candidate.exists() else None
-
-    print("[INFO] Warping pRF maps to subject space...")
-    ecc_subj, pol_subj, varea_subj = warp_prf_maps_to_subject(
-        template_eccentricity=args.template_ecc,
-        template_polar_angle=args.template_polar,
-        template_varea=args.template_varea,
-        subject_t1=args.subject_t1,
+    warp_tck_template_to_subject(
+        tck_in_tpl=tpl_segment,
+        tck_out_subj=subj_segment,
+        subj_ref=args.subject_t1,
         affine=affine,
-        inv_warp=inv_warp,
-        output_dir=args.outdir,
+        warp=warp,
     )
 
-    print("[INFO] Done. Warped pRF maps:")
-    print(f"  eccentricity : {ecc_subj}")
-    print(f"  polarAngle   : {pol_subj}")
-    print(f"  varea        : {varea_subj}")
+    n_subj = count_streamlines(subj_segment)
+    print(f" Subject-space segmented tract: {subj_segment}")
+    print(f" Subject segment streamline count: {n_subj}")
+    if n_subj == 0:
+        print(" WARNING: subject-space segment has 0 streamlines (warp or ROI mismatch?)")
 
 
 if __name__ == "__main__":
