@@ -1,6 +1,6 @@
-# Map Retinotopic Connections (app-map-retinotopic-connections)
+# Map Retinotopic Connections (app-map-retinotopic-tracts)
 
-`app-map-retinotopic-connections` extracts **retinotopically-defined white-matter pathways**
+`app-map-retinotopic-tracts` extracts **retinotopically-defined white-matter pathways**
 from a **template tractogram** and maps them into **subject space**.
 
 The app implements a simple two-step pipeline:
@@ -46,8 +46,8 @@ Run as a standard Brainlife app.
 ### Local
 
 ```bash
-git clone https://github.com/gamorosino/app-map-retinotopic-connections.git
-cd app-map-retinotopic-connections
+git clone https://github.com/gamorosino/app-map-retinotopic-tracts.git
+cd app-map-retinotopic-tracts
 chmod +x main
 ./main
 ```
