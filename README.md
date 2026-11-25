@@ -1,5 +1,52 @@
 # Map Retinotopic Connections (app-map-retinotopic-tracts)
 
+<!-- brainlife-app:begin (generated from the App manifest; edit the manifest, not this block) -->
+
+> **Extracts the streamlines connecting two visual areas (optionally restricted to eccentricity, polar-angle and hemisphere bins) from a template tractogram using retinotopic maps and MRtrix3 tckedit, and warps the tract into subject space with ANTs.**
+
+Builds ROI masks of the two visual areas and the requested eccentricity and polar-angle bins from template-space retinotopic maps (Benson-style varea, eccentricity and polar angle), selects the template streamlines connecting them with tckedit (endpoints only and ordered ROIs by default), then maps the selected tract into the subject's space using the given affine and warp or, if they are absent, an ANTs registration of the subject T1 to the template T1. Use it to obtain retinotopically defined visual pathways (e.g. V1-V2 for a given eccentricity band) in a subject without subject-level tractography.
+
+| | |
+|---|---|
+| 📥 **Inputs** | `neuro/track/tck` · `neuro/prf` · `neuro/transform/nifti` · `neuro/anat/t1w` ×2 |
+| 📤 **Outputs** | `neuro/track/tck` |
+| 🐳 **Container** | `gamorosino/tract_align:latest` |
+| ⚙️ **Resources** | 1 CPUs · 4 h walltime |
+| 🔗 **Run it** | [doi.org/10.25663/brainlife.app.913](https://doi.org/10.25663/brainlife.app.913) |
+
+#### 📥 Inputs
+
+| Input | Datatype | Required | Description |
+|---|---|---|---|
+| `tractogram` | `neuro/track/tck` | yes | Template-space (e.g. occipital) tractogram from which the pathway is extracted. |
+| `prf` | `neuro/prf` | yes | Template-space retinotopic maps; eccentricity, polarAngle and varea (visual area labels) are used to define the ROIs. Must be in the same space as the template tractogram and template T1. |
+| `transform` | `neuro/transform/nifti` | yes | Precomputed affine and warp between template and subject; if both are present, registration is skipped. |
+| `t1_template` | `neuro/anat/t1w` | yes | T1-weighted image of the template space. |
+| `t1_subject` | `neuro/anat/t1w` | yes | T1-weighted image of the target subject. |
+
+#### 📤 Outputs
+
+| Output | Datatype | Description |
+|---|---|---|
+| `output` | `neuro/track/tck` | Selected tract warped to subject space (.tck), with the template-space segment and registration outputs in the output folder. |
+
+<details>
+<summary><b>⚙️ Parameters</b> (7)</summary>
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `visual_area_a` | string | `V1` | First visual area label (e.g. V1). |
+| `visual_area_b` | string | `V2` | Second visual area label (e.g. V2). |
+| `ecc_bin` | string |  | Eccentricity bin in degrees (e.g. '0-16'); empty means all. |
+| `polar_bin` | string |  | Polar angle bin in degrees (e.g. '165-180'); empty means all. |
+| `hemisphere` | string |  | Hemisphere to extract: L, R, or empty for both. |
+| `ends_only` | boolean | `true` | Require the streamline endpoints (not any point) to be in the ROIs (tckedit -ends_only). |
+| `roi_order` | boolean | `true` | Require streamlines to traverse the ROIs in order (ordered ROI filtering). |
+
+</details>
+
+<!-- brainlife-app:end -->
+
 `app-map-retinotopic-tracts` extracts **retinotopically-defined white-matter pathways**
 from a **template tractogram** and maps them into **subject space**.
 
