@@ -1,4 +1,15 @@
-# Map Retinotopic Connections (app-map-retinotopic-tracts)
+<h1 align="center">Map Retinotopic Connections</h1>
+
+<p align="center">
+  Extracts the streamlines connecting two visual areas (optionally restricted to eccentricity, polar-angle and hemisphere bins) from a template tractogram using retinotopic maps and MRtrix3 tckedit, and warps the tract into subject space with ANTs.
+</p>
+
+<p align="center">
+  <a href="https://github.com/brainlife/abcd-spec"><img src="https://img.shields.io/badge/ABCD_Spec-v1.1-green.svg" alt="ABCD Spec v1.1"></a>
+  <a href="https://doi.org/10.25663/brainlife.app.913"><img src="https://img.shields.io/badge/Brainlife-brainlife.app.913-blue.svg" alt="Run on brainlife.io"></a>
+</p>
+
+## At a glance
 
 <!-- brainlife-app:begin (generated from the App manifest; edit the manifest, not this block) -->
 
@@ -8,13 +19,13 @@ Builds ROI masks of the two visual areas and the requested eccentricity and pola
 
 | | |
 |---|---|
-| 📥 **Inputs** | `neuro/track/tck` · `neuro/prf` · `neuro/transform/nifti` · `neuro/anat/t1w` ×2 |
-| 📤 **Outputs** | `neuro/track/tck` |
-| 🐳 **Container** | `gamorosino/tract_align:latest` |
-| ⚙️ **Resources** | 1 CPUs · 4 h walltime |
-| 🔗 **Run it** | [doi.org/10.25663/brainlife.app.913](https://doi.org/10.25663/brainlife.app.913) |
+| **Inputs** | `neuro/track/tck` · `neuro/prf` · `neuro/transform/nifti` · `neuro/anat/t1w` ×2 |
+| **Outputs** | `neuro/track/tck` |
+| **Container** | `gamorosino/tract_align:latest` |
+| **Resources** | 1 CPUs · 4 h walltime |
+| **Run it** | [doi.org/10.25663/brainlife.app.913](https://doi.org/10.25663/brainlife.app.913) |
 
-#### 📥 Inputs
+#### Inputs
 
 | Input | Datatype | Required | Description |
 |---|---|---|---|
@@ -24,14 +35,14 @@ Builds ROI masks of the two visual areas and the requested eccentricity and pola
 | `t1_template` | `neuro/anat/t1w` | yes | T1-weighted image of the template space. |
 | `t1_subject` | `neuro/anat/t1w` | yes | T1-weighted image of the target subject. |
 
-#### 📤 Outputs
+#### Outputs
 
 | Output | Datatype | Description |
 |---|---|---|
 | `output` | `neuro/track/tck` | Selected tract warped to subject space (.tck), with the template-space segment and registration outputs in the output folder. |
 
 <details>
-<summary><b>⚙️ Parameters</b> (7)</summary>
+<summary><b>Parameters</b> (7)</summary>
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
@@ -47,23 +58,45 @@ Builds ROI masks of the two visual areas and the requested eccentricity and pola
 
 <!-- brainlife-app:end -->
 
-`app-map-retinotopic-tracts` extracts **retinotopically-defined white-matter pathways**
-from a **template tractogram** and maps them into **subject space**.
+## Running the App
 
-The app implements a simple two-step pipeline:
+### On brainlife.io
 
-1. **Template segmentation**
+Open the App at [doi.org/10.25663/brainlife.app.913](https://doi.org/10.25663/brainlife.app.913), choose `neuro/track/tck`, `neuro/prf`, `neuro/transform/nifti`, `neuro/anat/t1w`, `neuro/anat/t1w` from your project, set the parameters and press **Execute**. The results are saved to your project as `neuro/track/tck`.
 
-   * Extract streamlines connecting two visual areas (e.g. V1 ↔ V2)
-   * Optionally restrict by eccentricity and polar-angle bins
-   * Uses MRtrix3 `tckedit`
+### Locally
 
-2. **Warp to subject space**
+You need [Singularity/Apptainer](https://apptainer.org/) (the App runs in `gamorosino/tract_align:latest`), [`jq`](https://jqlang.github.io/jq/).
 
-   * Register subject T1 to template T1 (ANTs) *or* reuse precomputed transforms
-   * Warp the segmented tract into subject space
+1. Clone this repository.
+2. Create `config.json` with the paths to your inputs and the parameters:
 
----
+   ```json
+   {
+       "tractogram": "/path/to/tractogram/tractogram",
+       "r2": "/path/to/prf/r2",
+       "polarAngle": "/path/to/prf/polarAngle",
+       "eccentricity": "/path/to/prf/eccentricity",
+       "rfWidth": "/path/to/prf/rfWidth",
+       "varea": "/path/to/prf/varea",
+       "surfaces": "/path/to/prf/surfaces",
+       "prf_surfaces": "/path/to/prf/prf_surfaces",
+       "warp": "/path/to/transform/warp",
+       "inverse-warp": "/path/to/transform/inverse-warp",
+       "affine": "/path/to/transform/affine",
+       "t1_template": "/path/to/t1_template/t1_template",
+       "t1_subject": "/path/to/t1_subject/t1_subject",
+       "visual_area_a": "V1",
+       "visual_area_b": "V2",
+       "ecc_bin": "",
+       "polar_bin": "",
+       "hemisphere": "",
+       "ends_only": true,
+       "roi_order": true
+   }
+   ```
+
+3. Run `./main`.
 
 ## Repository contents
 
@@ -77,20 +110,7 @@ The app implements a simple two-step pipeline:
 
 ---
 
-## Author
-
-**Gabriele Amorosino**
-[gabriele.amorosino@utexas.edu](mailto:gabriele.amorosino@utexas.edu)
-
----
-
-## Usage
-
-### Brainlife
-
-Run as a standard Brainlife app.
-
-### Local
+## Local
 
 ```bash
 git clone https://github.com/gamorosino/app-map-retinotopic-tracts.git
@@ -101,9 +121,7 @@ chmod +x main
 
 ---
 
-## Inputs (`config.json`)
-
-### Required
+## Required
 
 | Field         | Description                            |
 | ------------- | -------------------------------------- |
@@ -115,7 +133,7 @@ chmod +x main
 
 ---
 
-### Optional selection parameters
+## Optional selection parameters
 
 | Field        | Default | Description                      |
 | ------------ | ------- | -------------------------------- |
@@ -127,7 +145,7 @@ chmod +x main
 
 ---
 
-### Registration options
+## Registration options
 
 | Field      | Description                             |
 | ---------- | --------------------------------------- |
@@ -137,34 +155,6 @@ chmod +x main
 
 If `affine` and `warp` are provided → **registration is skipped**.
 Otherwise → ANTs registration is computed automatically.
-
----
-
-### Output
-
-| Field    | Default   |
-| -------- | --------- |
-| `outdir` | `output/` |
-
----
-
-## Outputs
-
-```
-output/
-├── visual_tracts/
-│   └── V1_V2_ecc0_16_pol165_180_R.tck     # template segment
-│
-├── subj_*.tck                             # warped tract in subject space
-│
-├── Reg2MNI/                               # registration outputs (if computed)
-│   ├── *_0GenericAffine.mat
-│   ├── *_1Warp.nii.gz
-│   └── *_1InverseWarp.nii.gz
-│
-└── work/
-    └── atlas_segment_masks/               # intermediate ROI masks
-```
 
 ---
 
@@ -193,9 +183,7 @@ output/
 
 ---
 
-## Pipeline details
-
-### Step 1 — Template segmentation
+## Step 1 — Template segmentation
 
 Uses:
 
@@ -217,7 +205,7 @@ extract_template_tract_segment.py
 
 ---
 
-### Step 2 — Warp to subject
+## Step 2 — Warp to subject
 
 Uses:
 
@@ -230,16 +218,6 @@ warp_template_segment_to_subject.py
 
   * `ConvertTransformFile`
   * `scil_apply_transform_to_tractogram.py`
-
----
-
-## Dependencies
-
-* MRtrix3 (`tckedit`, `tckinfo`)
-* ANTs
-* scilpy
-* nibabel / numpy
-* Bash + `REGlib.sh`
 
 ---
 
@@ -257,13 +235,18 @@ data/templates/hemisphere_parc/
 
 ---
 
-## Citation
+## Citing
 
-If you use this app in your research, please cite:
+If you use this App, please cite it, the software it builds on and brainlife.io:
 
-- **Brainlife.io**: Hayashi, S., et al. (2024). *Nature Methods, 21*(5), 809–813.
-  DOI: [10.1038/s41592-024-02237-2](https://doi.org/10.1038/s41592-024-02237-2)
-- **MRtrix3**: Tournier, J.-D., et al. (2019). *NeuroImage, 202*, 116137.
-  DOI: [10.1016/j.neuroimage.2019.116137](https://doi.org/10.1016/j.neuroimage.2019.116137)
-- **ANTs**: Avants, B. B., et al. (2011). *NeuroImage, 54*(3), 2033–2044.
-  DOI: [10.1016/j.neuroimage.2010.09.025](https://doi.org/10.1016/j.neuroimage.2010.09.025)
+- Map Retinotopic Connections. brainlife.io App. [doi:10.25663/brainlife.app.913](https://doi.org/10.25663/brainlife.app.913)
+- **MRtrix3**: Tournier, J.-D., et al. (2019). *NeuroImage, 202*, 116137. DOI: [10.1016/j.neuroimage.2019.116137](https://doi.org/10.1016/j.neuroimage.2019.116137)
+- **ANTs**: Avants, B. B., et al. (2011). *NeuroImage, 54*(3), 2033–2044. DOI: [10.1016/j.neuroimage.2010.09.025](https://doi.org/10.1016/j.neuroimage.2010.09.025)
+- Hayashi S, Caron BA, Heinsfeld AS, et al. brainlife.io: a decentralized and open-source cloud platform to support neuroscience research. *Nature Methods* 21:809–813 (2024). [doi:10.1038/s41592-024-02237-2](https://doi.org/10.1038/s41592-024-02237-2)
+- Avesani P, McPherson B, Hayashi S, et al. The open diffusion data derivatives, brain data upcycling via integrated publishing of derivatives and reproducible open cloud services. *Scientific Data* 6:69 (2019). [doi:10.1038/s41597-019-0073-y](https://doi.org/10.1038/s41597-019-0073-y)
+
+## Authors
+
+**Gabriele Amorosino**
+
+---
